@@ -39,6 +39,11 @@ async def on_message(message):
     if command_regex.match(message.content) != None:
         # ignore first token, it is the command itself 
         tokens = token_regex.findall(message.content)[1:]
+
+        # if no arguments are passed, default to 'help.txt'
+        if len(tokens) == 0:
+            tokens = ['help.txt']
+
         replied_tokens = []
         for t in tokens:
             # check if we've responded to this query already
@@ -67,6 +72,7 @@ async def on_message(message):
 
             if result is None:
                 print('colon-prefixed tag :{} could not be found'.format(t))
+                print('tag {} is not in tags.db'.format(t))
             else:
                 tag = result[0]
                 doc = result[1]
