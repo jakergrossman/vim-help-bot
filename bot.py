@@ -39,7 +39,13 @@ async def on_message(message):
     if command_regex.match(message.content) != None:
         # ignore first token, it is the command itself 
         tokens = token_regex.findall(message.content)[1:]
+        replied_tokens = []
         for t in tokens:
+            # check if we've responded to this query already
+            if t in replied_tokens:
+                print('already replied to {}, skipping'.format(t))
+                continue
+
             # get result
             entry = (t,)
             query = 'SELECT * FROM tags WHERE tag=?'
@@ -65,6 +71,7 @@ async def on_message(message):
                 tag = result[0]
                 doc = result[1]
                 link = build_link(doc, tag)
+                replied_tokens.insert(0, t)
 
                 # check that url gets a response
                 request = requests.head(link)
