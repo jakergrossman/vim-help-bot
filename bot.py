@@ -45,6 +45,7 @@ async def on_message(message):
             tokens = ['help.txt']
 
         replied_tokens = []
+        responses = []
         for t in tokens:
             # check if we've responded to this query already
             if t in replied_tokens:
@@ -82,7 +83,15 @@ async def on_message(message):
                 # check that url gets a response
                 request = requests.head(link)
                 if request.ok:
-                    reply = 'Help for `:h {}`: {}'.format(t, link)
-                    await message.channel.send(reply)
+                    responses.insert(len(responses), '`:h {}`: {}'.format(tag, link))
+
+        if len(responses) > 0:
+            if len(responses) == 1:
+                msg = 'Help page for {}'.format(responses[0])
+            else:
+                msg = 'Help pages for:\n'
+                for r in responses:
+                    msg += '• ' + r + '\n'
+            await message.channel.send(msg)
 
 client.run(discord_token)
