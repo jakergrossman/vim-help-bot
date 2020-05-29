@@ -47,6 +47,10 @@ async def on_message(message):
         replied_tokens = []
         responses = []
         for t in tokens:
+            # replace double quotes in t with the string quote,
+            # since that's what appears in the help docs
+            t = t.replace('"', 'quote')
+
             # check if we've responded to this query already
             if t in replied_tokens:
                 print('already replied to {}, skipping'.format(t))
@@ -73,6 +77,14 @@ async def on_message(message):
 
             if result is None:
                 print('colon-prefixed tag :{} could not be found'.format(t))
+
+                # perform case insensitive search
+                entry = (t,)
+                query = 'SELECT * FROM tags WHERE UPPER(tag)=UPPER(?)'
+                result = cursor.execute(query, entry).fetchone()
+
+            if result is None:
+                print('case-insensitive search for {} could not be found'.format(t))
                 print('tag {} is not in tags.db'.format(t))
             else:
                 tag = result[0]
