@@ -23,6 +23,79 @@ cursor = db.cursor()
 token_regex = re.compile(r'\S+')
 command_regex = re.compile(r':(h|he|hel|help)')
 
+# finds the most relevant help tag according
+# to the following:
+#
+# If there is no full match for the pattern,
+# or there are several matches, the "best"
+# match will be used.
+#
+# - A match with the same case is much better
+#   than a match with a different case
+# - A match that starts after a non-alphanumeric
+#   character is better than a match in the
+#   middle of a word
+# - A match at or near the beginning of the tag
+#   is better than a match further on
+# - The more alphanumeric characters match, the better.
+# - The shorter the length of the match, the better.
+def match_weight(match, tag):
+    # weights
+    case_weight      = 10000 # weight for correct case
+    prev_char_weight = 1000  # weight for matches starting after [^a-zA-Z0-9]
+    index_weight     = -100  # weight for index of match in tag
+    alnum_weight     = 10    # weight for each matching [a-zA-Z0-9]
+    length_weight    = -1    # weight for length of match
+
+    # calculated tag weight
+    weight = 0
+
+    # get index of match
+    idx = tag.find(match)
+
+    weight += idx * index_weight
+
+    # check case
+    if match == tag[idx:idx+len(match)]:
+        # exact case match
+        weight += case_weight
+
+    # check if previous char is alphanumeric, if applicable
+    # NOTE: if match starts at beginning of tag, the weight
+    # is still applied
+    if len(tag) > 0:
+        if idx > 0:
+            if tag[idx-1].isalnum():
+                weight += prev_char_weight
+        else:
+            weight += prev_char_weight
+
+    # count number of alphanumeric matches
+    for c in match:
+        if c.isalnum():
+            weight += alnum_weight
+
+    # apply length weight
+    weight += len(match) * length_weight
+
+    # return tag weight
+    return weight
+
+def sort_matches(matches):
+    sorted_matches = sorted(matches, key=lambda m: match_weight(m[0], m[1]))
+    return sorted_matches
+
+def fmt_help_tag(tag):
+    search_query = tag
+
+    # * -> star
+    search_query = search_query.replace('*', 'star')
+
+    # " -> quote
+    search_query = search_query.replace('"', 'quote')
+
+    return search_query
+
 @client.event
 async def on_ready():
     print('Logged in as {}'.format(client.user))
@@ -37,7 +110,7 @@ async def on_message(message):
         return
 
     if command_regex.match(message.content) != None:
-        # ignore first token, it is the command itself 
+        # ignore first token, it is the command itself
         tokens = token_regex.findall(message.content)[1:]
 
         # if no arguments are passed, default to 'help.txt'
@@ -47,50 +120,43 @@ async def on_message(message):
         replied_tokens = []
         responses = []
         for t in tokens:
-            # replace double quotes in t with the string quote,
-            # since that's what appears in the help docs
-            t = t.replace('"', 'quote')
+            # escape special characters
+            t = fmt_help_tag(t)
 
             # check if we've responded to this query already
             if t in replied_tokens:
                 print('already replied to {}, skipping'.format(t))
                 continue
 
-            # get result
-            entry = (t,)
             query = 'SELECT * FROM tags WHERE tag=?'
-            result = cursor.execute(query, entry).fetchone()
 
-            if result is None:
-                print('base tag {} could not be found'.format(t))
+            # check for exact match
+            entry = (t,)
+            exact_match = cursor.execute(query, entry).fetchone()
 
-                # wrap t in quotes and try again
-                entry = ('\'' + t + '\'',)
-                result = cursor.execute(query, entry).fetchone()
-
-            if result is None:
-                print('quoted tag \'{}\' could not be found'.format(t))
-
-                # append ':' to beginning of t and try again
-                entry = (':' + t,)
-                result = cursor.execute(query, entry).fetchone()
-
-            if result is None:
-                print('colon-prefixed tag :{} could not be found'.format(t))
-
-                # perform case insensitive search
-                entry = (t,)
-                query = 'SELECT * FROM tags WHERE UPPER(tag)=UPPER(?)'
-                result = cursor.execute(query, entry).fetchone()
-
-            if result is None:
-                print('case-insensitive search for {} could not be found'.format(t))
-                print('tag {} is not in tags.db'.format(t))
+            if exact_match is not None:
+                # exact match exists
+                best_match = exact_match
             else:
-                tag = result[0]
-                doc = result[1]
+                # no exact match, perform fuzzy match
+                query = 'SELECT * FROM tags WHERE tag LIKE ? '
+
+                # get result
+                entry = ('%' + t + '%',)
+                all_matches = cursor.execute(query, entry).fetchall()
+
+
+                if len(all_matches) > 0:
+                    best_match = sort_matches(all_matches)[0]
+                else:
+                    # no match for current token
+                    continue
+
+            if best_match is not None:
+                tag = best_match[0]
+                doc = best_match[1]
                 link = build_link(doc, tag)
-                replied_tokens.insert(0, t)
+                replied_tokens.append(t)
 
                 # check that url gets a response
                 request = requests.head(link)
