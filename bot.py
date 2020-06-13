@@ -20,7 +20,7 @@ db = sqlite3.connect('tags.db')
 cursor = db.cursor()
 
 # regex to use to isolate tokens
-token_regex = re.compile(r'[^\s]+')
+token_regex = re.compile(r'\S+')
 command_regex = re.compile(r':(h|he|hel|help)')
 
 @client.event
